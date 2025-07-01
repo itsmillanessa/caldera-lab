@@ -1,0 +1,21 @@
+# Claves privadas
+*.pem
+
+# Archivos de entorno
+.env
+
+# Archivos de Python compilados
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# Archivos temporales
+*.swp
+
+# Configs de VSCode
+.vscode/
+
+# MacOS
+.DS_Store
