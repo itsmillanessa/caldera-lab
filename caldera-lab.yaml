@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: MITRE Caldera Lab - VPC + EC2 (Ubuntu) + SG
+
+Parameters:
+  KeyName:
+    Type: String
+    Description: EC2 KeyPair name for SSH access
+
+Resources:
+
+  CalderaVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.50.0.0/16
+      Tags:
+        - Key: Name
+          Value: CalderaVPC
+
+  CalderaSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CalderaVPC
+      CidrBlock: 10.50.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CalderaSubnet
+
+  CalderaIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: CalderaIGW
+
+  CalderaAttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref CalderaVPC
+      InternetGatewayId: !Ref CalderaIGW
+
+  CalderaRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CalderaVPC
+      Tags:
+        - Key: Name
+          Value: CalderaRouteTable
+
+  CalderaRoute:
+    Type: AWS::EC2::Route
+    DependsOn: CalderaAttachIGW
+    Properties:
+      RouteTableId: !Ref CalderaRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref CalderaIGW
+
+  CalderaSubnetRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref CalderaSubnet
+      RouteTableId: !Ref CalderaRouteTable
+
+  CalderaSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and Caldera Web Access
+      VpcId: !Ref CalderaVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8888
+          ToPort: 8888
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: CalderaSG
+
+  CalderaInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.medium
+      KeyName: !Ref KeyName
+      SubnetId: !Ref CalderaSubnet
+      SecurityGroupIds:
+        - !Ref CalderaSG
+      ImageId: ami-053b0d53c279acc90  # Ubuntu Server 22.04 LTS (us-east-1)
+      Tags:
+        - Key: Name
+          Value: CalderaInstance
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt update && apt upgrade -y
+          apt install -y git python3 python3-pip python3-venv
+          cd /opt
+          git clone https://github.com/mitre/caldera.git --recursive
+          cd caldera
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+          cat <<EOF > /etc/systemd/system/caldera.service
+          [Unit]
+          Description=Caldera APT Emulation Platform
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/opt/caldera
+          ExecStart=/opt/caldera/venv/bin/python3 server.py --insecure
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          systemctl daemon-reexec
+          systemctl daemon-reload
+          systemctl enable caldera
+          systemctl start caldera
