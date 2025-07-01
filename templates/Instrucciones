@@ -1,0 +1,14 @@
+## 🚀 Cómo desplegar el laboratorio en AWS
+
+Asegúrate de tener autenticación activa por SSO (`aws sso login --profile NOMBRE DE PERFIL`) y haber creado previamente una key pair llamada `caldera-key`.
+
+Ejecuta el siguiente comando desde la carpeta `/templates` para lanzar el stack en AWS CloudFormation:
+
+```bash
+aws cloudformation create-stack \
+  --stack-name caldera-lab \
+  --template-body file://caldera-lab.yaml \
+  --parameters ParameterKey=KeyName,ParameterValue=caldera-key \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1 \
+  --profile NOMBRE DEL PERFIL
